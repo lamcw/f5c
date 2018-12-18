@@ -1,5 +1,7 @@
-#include "f5c.h"
 #include <assert.h>
+#include <cuda_fp16.h>
+
+#include "f5c.h"
 #include "f5cmisc.cuh"
 
 //#define DEBUG_ESTIMATED_SCALING 1
@@ -141,19 +143,18 @@ __global__ void align_kernel_pre_2d(char* read,
     int32_t* read_len, int32_t* read_ptr,
     int32_t* n_events,
     int32_t* event_ptr, model_t* models,
-    int32_t n_bam_rec,model_t* model_kmer_caches,float *bands1,uint8_t *trace1, EventKmerPair* band_lower_left1) {
-
+    int32_t n_bam_rec, model_t* model_kmer_caches, half *bands1,
+    uint8_t *trace1, EventKmerPair* band_lower_left1) {
 
     int i = blockDim.y * blockIdx.y + threadIdx.y;
     int tid=blockIdx.x*blockDim.x+threadIdx.x;
-
 
     if (i < n_bam_rec) {
         char* sequence = &read[read_ptr[i]];
         int32_t sequence_len = read_len[i];
         int32_t n_event = n_events[i];
         model_t* model_kmer_cache = &model_kmer_caches[read_ptr[i]];
-        float *bands = &bands1[(read_ptr[i]+event_ptr[i])*ALN_BANDWIDTH];
+        half *bands = &bands1[(read_ptr[i]+event_ptr[i])*ALN_BANDWIDTH];
         uint8_t *trace = &trace1[(read_ptr[i]+event_ptr[i])*ALN_BANDWIDTH];
         EventKmerPair* band_lower_left = &band_lower_left1[read_ptr[i]+event_ptr[i]];    
 
@@ -215,19 +216,19 @@ __global__ void align_kernel_pre_2d(char* read,
             int start_cell_offset = band_kmer_to_offset(0, -1);
             assert(is_offset_valid(start_cell_offset));
             assert(band_event_to_offset(0, -1) == start_cell_offset);
-            BAND_ARRAY(0,start_cell_offset) = 0.0f;
+            BAND_ARRAY(0,start_cell_offset) = __float2half(0.0f);
 
             // band 1: first event is trimmed
             int first_trim_offset = band_event_to_offset(1, 0);
             assert(kmer_at_offset(1, first_trim_offset) == -1);
             assert(is_offset_valid(first_trim_offset));
-            BAND_ARRAY(1,first_trim_offset) = lp_trim;
+            BAND_ARRAY(1,first_trim_offset) = __float2half(lp_trim);
             TRACE_ARRAY(1,first_trim_offset) = FROM_U;
 
             //int fills = 0;
         #ifdef DEBUG_ADAPTIVE
             fprintf(stderr, "[trim] bi: %d o: %d e: %d k: %d s: %.2lf\n", 1,
-                    first_trim_offset, 0, -1, BAND_ARRAY(1,first_trim_offset);
+                    first_trim_offset, 0, -1, BAND_ARRAY(1,first_trim_offset));
         #endif
 
         }
@@ -249,12 +250,13 @@ __global__ void
 align_kernel_core_2d_shm(int32_t* read_len, int32_t* read_ptr,
     event_t* event_table, int32_t* n_events1,
     int32_t* event_ptr, 
-    scalings_t* scalings, int32_t n_bam_rec,model_t* model_kmer_caches,float *band,uint8_t *traces, EventKmerPair* band_lower_lefts) {
+    scalings_t* scalings, int32_t n_bam_rec,model_t* model_kmer_caches,
+    half *band, uint8_t *traces, EventKmerPair* band_lower_lefts) {
    
     int i = blockDim.y * blockIdx.y + threadIdx.y;
     int offset=blockIdx.x*blockDim.x+threadIdx.x;
 
-    __shared__ float  bands_shm[3][ALN_BANDWIDTH];
+    __shared__ half bands_shm[3][ALN_BANDWIDTH];
     __shared__ EventKmerPair  band_lower_left_shm[3];
 
     if (i < n_bam_rec && offset<ALN_BANDWIDTH) {   
@@ -264,7 +266,7 @@ align_kernel_core_2d_shm(int32_t* read_len, int32_t* read_ptr,
         int32_t n_event = n_events1[i];
         scalings_t scaling = scalings[i];
         model_t* model_kmer_cache = &model_kmer_caches[read_ptr[i]];
-        float *bands = &band[(read_ptr[i]+event_ptr[i])*ALN_BANDWIDTH];
+        half *bands = &band[(read_ptr[i]+event_ptr[i])*ALN_BANDWIDTH];
         uint8_t *trace = &traces[(read_ptr[i]+event_ptr[i])*ALN_BANDWIDTH];
         EventKmerPair* band_lower_left = &band_lower_lefts[read_ptr[i]+event_ptr[i]];;
 
@@ -316,9 +318,9 @@ align_kernel_core_2d_shm(int32_t* read_len, int32_t* read_ptr,
                 // When both ll and ur are out-of-band (ob) we alternate movements
                 // otherwise we decide based on scores
                 //float ll = BAND_ARRAY((band_idx - 1), 0);
-                float ll = BAND_ARRAY_SHM((1), 0);
+                float ll = __half2float(BAND_ARRAY_SHM((1), 0));
                 //float ur = BAND_ARRAY((band_idx - 1),(bandwidth - 1));
-                float ur = BAND_ARRAY_SHM((1),(bandwidth - 1));
+                float ur = __half2float(BAND_ARRAY_SHM((1),(bandwidth - 1)));
                 bool ll_ob = ll == -INFINITY;
                 bool ur_ob = ur == -INFINITY;
 
@@ -342,11 +344,11 @@ align_kernel_core_2d_shm(int32_t* read_len, int32_t* read_ptr,
                     int32_t event_idx = event_at_offset_shm(0, trim_offset);
                     if (event_idx >= 0 && event_idx < n_events) {
                         //BAND_ARRAY(band_idx,trim_offset) = lp_trim * (event_idx + 1);
-                        BAND_ARRAY_SHM(0,trim_offset) = lp_trim * (event_idx + 1);
+                        BAND_ARRAY_SHM(0,trim_offset) = __float2half(lp_trim * (event_idx + 1));
                         TRACE_ARRAY(band_idx,trim_offset) = FROM_U;
                     } else {
                         //BAND_ARRAY(band_idx,trim_offset) = -INFINITY;
-                        BAND_ARRAY_SHM(0,trim_offset) = -INFINITY;
+                        BAND_ARRAY_SHM(0,trim_offset) = __float2half(-INFINITY);
                     }
                 }
             }
@@ -389,13 +391,13 @@ align_kernel_core_2d_shm(int32_t* read_len, int32_t* read_ptr,
     #endif //DEBUG_ADAPTIVE
 
                 float up = is_offset_valid(offset_up)
-                               ? BAND_ARRAY_SHM(1,offset_up)
+                               ? __half2float(BAND_ARRAY_SHM(1,offset_up))
                                : -INFINITY;
                 float left = is_offset_valid(offset_left)
-                                 ? BAND_ARRAY_SHM(1,offset_left)
+                                 ? __half2float(BAND_ARRAY_SHM(1,offset_left))
                                  : -INFINITY;
                 float diag = is_offset_valid(offset_diag)
-                                 ? BAND_ARRAY_SHM(2,offset_diag)
+                                 ? __half2float(BAND_ARRAY_SHM(2,offset_diag))
                                  : -INFINITY;
 
             #ifndef PROFILE
@@ -451,7 +453,7 @@ align_kernel_core_2d_shm(int32_t* read_len, int32_t* read_ptr,
                         lp_emission);
     #endif //DEBUG_ADAPTIVE
                 //BAND_ARRAY(band_idx,offset) = max_score;
-                BAND_ARRAY_SHM(0,offset) = max_score;
+                BAND_ARRAY_SHM(0,offset) = __float2half(max_score);
                 TRACE_ARRAY(band_idx,offset) = from;
                 //fills += 1;
             }
@@ -486,7 +488,8 @@ __global__ void align_kernel_post(AlignedPair* event_align_pairs,
     int32_t* read_len, int32_t* read_ptr,
     event_t* event_table, int32_t* n_events,
     int32_t* event_ptr, 
-    scalings_t* scalings, int32_t n_bam_rec,model_t* model_kmer_caches,float *bands1,uint8_t *trace1, EventKmerPair* band_lower_left1) {
+    scalings_t* scalings, int32_t n_bam_rec, model_t* model_kmer_caches,
+    half *bands1, uint8_t *trace1, EventKmerPair* band_lower_left1) {
 
     #ifndef WARP_HACK        
         int i = blockDim.x * blockIdx.x + threadIdx.x;
@@ -502,7 +505,7 @@ __global__ void align_kernel_post(AlignedPair* event_align_pairs,
         int32_t n_event = n_events[i];
         scalings_t scaling = scalings[i];
         model_t* model_kmer_cache = &model_kmer_caches[read_ptr[i]];
-        float *bands = &bands1[(read_ptr[i]+event_ptr[i])*ALN_BANDWIDTH];
+        half *bands = &bands1[(read_ptr[i]+event_ptr[i])*ALN_BANDWIDTH];
         uint8_t *trace = &trace1[(read_ptr[i]+event_ptr[i])*ALN_BANDWIDTH];
         EventKmerPair* band_lower_left = &band_lower_left1[read_ptr[i]+event_ptr[i]];;
  
@@ -580,7 +583,7 @@ __global__ void align_kernel_post(AlignedPair* event_align_pairs,
             int offset = band_event_to_offset(band_idx, event_idx);
             if (is_offset_valid(offset)) {
                 float s =
-                    BAND_ARRAY(band_idx,offset) + (n_events - event_idx) * lp_trim;
+                    __half2float(BAND_ARRAY(band_idx,offset)) + (n_events - event_idx) * lp_trim;
                 if (s > max_score) {
                     max_score = s;
                     curr_event_idx = event_idx;
@@ -738,5 +741,3 @@ __global__ void align_kernel_post(AlignedPair* event_align_pairs,
     
     }
 }
-
-

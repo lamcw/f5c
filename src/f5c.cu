@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <cuda_fp16.h>
 
 #include "error.h"
 #include "f5c.h"
@@ -760,7 +761,7 @@ void align_cuda(core_t* core, db_t* db) {
     scalings_t* scalings;
     AlignedPair* event_align_pairs;
     int32_t* n_event_align_pairs;
-    float *bands;
+    half *bands;
     uint8_t *trace;
     EventKmerPair* band_lower_left;
     model_t* model_kmer_cache;
@@ -928,8 +929,8 @@ realtime1 = realtime();
 
     //scratch arrays
     size_t sum_n_bands = sum_n_events + sum_read_len; //todo : can be optimised 
-    print_size("bands",sizeof(float) * sum_n_bands * ALN_BANDWIDTH);
-    cudaMalloc((void**)&bands,sizeof(float) * sum_n_bands * ALN_BANDWIDTH);
+    print_size("bands",sizeof(half) * sum_n_bands * ALN_BANDWIDTH);
+    cudaMalloc((void**)&bands,sizeof(half) * sum_n_bands * ALN_BANDWIDTH);
     CUDA_CHK();
     print_size("trace",sizeof(uint8_t) * sum_n_bands * ALN_BANDWIDTH);
     cudaMalloc((void**)&trace, sizeof(uint8_t) * sum_n_bands * ALN_BANDWIDTH);
