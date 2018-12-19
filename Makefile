@@ -29,7 +29,7 @@ ifdef cuda
     CFLAGS_CUDA += -g  -O2 -std=c++11 -lineinfo $(CUDA_ARCH) -Xcompiler -Wall
 	CUDALIB = -L/usr/local/cuda/lib64/ -lcudart_static -lrt -ldl
     OBJ += $(BUILD_DIR)/gpucode.o $(OBJ_CUDA)
-    CPPFLAGS += -DHAVE_CUDA=1
+    CPPFLAGS += -DHAVE_CUDA=1 -I/usr/local/cuda/include
 endif
 
 .PHONY: clean distclean format test

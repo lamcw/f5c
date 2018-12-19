@@ -4,6 +4,7 @@
 #include <htslib/faidx.h>
 #include <htslib/hts.h>
 #include <htslib/sam.h>
+#include <cuda_fp16.h>
 
 #include "fast5lite.h"
 #include "nanopolish_read_db.h"
@@ -257,7 +258,7 @@ typedef struct {
     scalings_t* scalings;
     AlignedPair* event_align_pairs;
     int32_t* n_event_align_pairs;
-    float *bands;
+    half *bands;
     uint8_t *trace;
     EventKmerPair* band_lower_left;
     model_t* model_kmer_cache;

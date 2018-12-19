@@ -96,7 +96,7 @@ void init_cuda(core_t* core){
                     AVG_EVENTS_PER_KMER * sizeof(event_t) + //event_table_capacity
                     1 * sizeof(model_t) + //model_kmer_cache_capacity
                     (AVG_EVENTS_PER_KMER * 2) * sizeof(AlignedPair) +  //event_align_pairs_capacity
-                    (AVG_EVENTS_PER_KMER + 1) * ALN_BANDWIDTH * sizeof(float) + //bands_capacity
+                    (AVG_EVENTS_PER_KMER + 1) * ALN_BANDWIDTH * sizeof(half) + //bands_capacity
                     (AVG_EVENTS_PER_KMER + 1) * ALN_BANDWIDTH * sizeof(uint8_t)  + //trace_capacity
                     (AVG_EVENTS_PER_KMER + 1) * sizeof(EventKmerPair) ; //band_lower_left_capacity
     
@@ -115,8 +115,8 @@ void init_cuda(core_t* core){
     uint64_t event_table_capacity = sum_n_events * sizeof(event_t); 
     uint64_t model_kmer_cache_capacity= sum_read_len * sizeof(model_t); 
     uint64_t event_align_pairs_capacity= sum_n_events * 2 * sizeof(AlignedPair); 
-    uint64_t bands_capacity = (sum_n_events + sum_read_len) * ALN_BANDWIDTH * sizeof(float) ; 
-    uint64_t trace_capacity = (sum_n_events + sum_read_len) * ALN_BANDWIDTH * sizeof(uint8_t) ; 
+    uint64_t bands_capacity = (sum_n_events + sum_read_len) * ALN_BANDWIDTH * sizeof(half);
+    uint64_t trace_capacity = (sum_n_events + sum_read_len) * ALN_BANDWIDTH * sizeof(uint8_t);
     uint64_t band_lower_left_capacity = (sum_n_events + sum_read_len) * sizeof(EventKmerPair); 
     
     assert(read_capacity + event_table_capacity + model_kmer_cache_capacity + event_align_pairs_capacity
