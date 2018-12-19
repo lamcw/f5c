@@ -4,7 +4,10 @@
 #include <htslib/faidx.h>
 #include <htslib/hts.h>
 #include <htslib/sam.h>
+
+#ifdef HAVE_CUDA
 #include <cuda_fp16.h>
+#endif
 
 #include "fast5lite.h"
 #include "nanopolish_read_db.h"
